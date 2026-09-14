@@ -64,86 +64,122 @@ def iniciar() -> None:
             messagebox.showerror("Não foi possível concluir", str(error), parent=root)
 
     # Cadastro e saldo
-    ttk.Label(stock_tab, text="Cadastre um produto com saldo inicial em um passo. Clique numa linha para editar os dados ou conferir o saldo.").pack(anchor="w")
-    product_tree = table(stock_tab, [("store", "Loja", 95), ("sku", "SKU", 115),
-        ("name", "Produto", 170), ("category", "Categoria", 120),
-        ("supplier", "Fornecedor", 150), ("price", "Preço venda", 100),
-        ("stock", "Saldo", 70), ("rules", "Prazo / Reserva", 130)], 7)
-    product_form = ttk.LabelFrame(stock_tab, text="Cadastro de produto")
+    ttk.Label(stock_tab, text="Busque um produto ou clique em Novo produto. Entradas, saídas e reservas exigem motivo.").pack(anchor="w")
+    search_bar = ttk.Frame(stock_tab)
+    search_bar.pack(fill="x", pady=4)
+    ttk.Label(search_bar,text="Buscar por nome, SKU ou código de barras:").pack(side="left")
+    product_search = tk.StringVar()
+    ttk.Entry(search_bar,textvariable=product_search,width=36).pack(side="left",padx=6)
+    product_tree = table(stock_tab,[("store","Loja",75),("sku","SKU",95),("name","Produto",135),
+        ("category","Categoria",90),("barcode","Cód. barras",120),("supplier","Fornecedor",120),
+        ("price","Preço",80),("physical","Físico",60),("reserved","Reservado",70),
+        ("available","Disponível",75),("rules","Prazo / Reserva",110)],6)
+    product_form = ttk.LabelFrame(stock_tab,text="Cadastro de produto")
     product_form.pack(fill="x")
     product_fields = {
-        "store": field(product_form, "Loja", 0, 0, "Loja 1"),
-        "sku": field(product_form, "Código (SKU)", 0, 1),
-        "name": field(product_form, "Nome do produto", 0, 2),
-        "category": field(product_form, "Categoria", 0, 3, "Geral"),
-        "unit": field(product_form, "Unidade", 0, 4, "un"),
-        "sale": field(product_form, "Preço de venda (R$)", 0, 5, "0,00"),
-        "supplier": field(product_form, "Fornecedor", 2, 0),
-        "lead": field(product_form, "Prazo (dias)", 2, 1, "5"),
-        "review": field(product_form, "Revisão (dias)", 2, 2, "7"),
-        "safety": field(product_form, "Reserva", 2, 3, "5"),
-        "minimum": field(product_form, "Compra mínima", 2, 4, "1"),
-        "multiple": field(product_form, "Múltiplo", 2, 5, "1"),
-        "target": field(product_form, "Saldo inicial ou conferido", 4, 0, "0"),
+        "store":field(product_form,"Loja",0,0,"Loja 1"),
+        "sku":field(product_form,"Código (SKU)",0,1),
+        "name":field(product_form,"Nome do produto",0,2),
+        "category":field(product_form,"Categoria",0,3,"Geral"),
+        "unit":field(product_form,"Unidade",0,4,"un"),
+        "sale":field(product_form,"Preço de venda (R$)",0,5,"0,00"),
+        "barcode":field(product_form,"Código de barras",0,6),
+        "supplier":field(product_form,"Fornecedor",2,0),
+        "lead":field(product_form,"Prazo (dias)",2,1,"5"),
+        "review":field(product_form,"Revisão (dias)",2,2,"7"),
+        "safety":field(product_form,"Reserva mínima",2,3,"5"),
+        "minimum":field(product_form,"Compra mínima",2,4,"1"),
+        "multiple":field(product_form,"Múltiplo",2,5,"1"),
+        "target":field(product_form,"Saldo inicial",2,6,"0"),
     }
+    selected_product_key = None
 
     def select_product(_event=None):
+        nonlocal selected_product_key
         selected = product_tree.selection()
         if not selected:
             return
-        store, sku = selected[0].split("\x1f", 1)
-        p = catalog.product(store, sku)
-        values = {"store":store,"sku":sku,"name":p["name"],"category":p["category"],
-                  "unit":p["unit"],"sale":f"{p['sale_cents']/100:.2f}","supplier":p["supplier"],
-                  "lead":p["lead_days"],"review":p["review_days"],"safety":p["safety"],
-                  "minimum":p["minimum"],"multiple":p["multiple"],"target":inventory.balance(store,sku)}
-        for key, value in values.items():
+        store,sku = selected[0].split("\x1f",1)
+        selected_product_key = (store,sku)
+        product = catalog.product(store,sku)
+        values = {"store":store,"sku":sku,"name":product["name"],
+            "category":product["category"],"unit":product["unit"],
+            "sale":f"{product['sale_cents']/100:.2f}","barcode":product["barcode"] or "",
+            "supplier":product["supplier"],"lead":product["lead_days"],
+            "review":product["review_days"],"safety":product["safety"],
+            "minimum":product["minimum"],"multiple":product["multiple"],
+            "target":inventory.balance(store,sku)}
+        for key,value in values.items():
             entry = product_fields[key]
             entry.delete(0,"end")
             entry.insert(0,str(value))
 
-    product_tree.bind("<<TreeviewSelect>>", select_product)
-
-    def save_product():
-        f = product_fields
-        created = catalog.save_product(
-            f["store"].get(), f["sku"].get(), f["name"].get(), f["supplier"].get(),
-            int(f["lead"].get()), int(f["review"].get()), int(f["safety"].get()),
-            int(f["minimum"].get()), int(f["multiple"].get()),
-            category=f["category"].get(), unit=f["unit"].get(),
-            sale_price=f["sale"].get(), opening_balance=int(f["target"].get()))
-        return "Produto cadastrado com saldo inicial e já aparece na lista." if created else "Produto atualizado. Para mudar o saldo, use 'Ajustar saldo'."
+    product_tree.bind("<<TreeviewSelect>>",select_product)
 
     def clear_product():
+        nonlocal selected_product_key
+        selected_product_key = None
         product_tree.selection_remove(*product_tree.selection())
         defaults = {"store":"Loja 1","category":"Geral","unit":"un","sale":"0,00",
-                    "lead":"5","review":"7","safety":"5","minimum":"1","multiple":"1","target":"0"}
-        for key, entry in product_fields.items():
+            "lead":"5","review":"7","safety":"5","minimum":"1","multiple":"1","target":"0"}
+        for key,entry in product_fields.items():
             entry.delete(0,"end")
             entry.insert(0,defaults.get(key,""))
         product_fields["sku"].focus_set()
 
-    def adjust_stock():
+    def save_product():
         f = product_fields
-        inventory.adjust(f["store"].get().strip(), f["sku"].get().strip(), int(f["target"].get()))
-        return "Saldo atualizado com uma movimentação de conferência."
+        store,sku = f["store"].get().strip(),f["sku"].get().strip()
+        if selected_product_key and selected_product_key != (store,sku):
+            raise ValueError("Loja e SKU não podem mudar durante a edição. Use Novo produto.")
+        created = catalog.save_product(store,sku,f["name"].get(),f["supplier"].get(),
+            int(f["lead"].get()),int(f["review"].get()),int(f["safety"].get()),
+            int(f["minimum"].get()),int(f["multiple"].get()),
+            category=f["category"].get(),unit=f["unit"].get(),sale_price=f["sale"].get(),
+            barcode=f["barcode"].get(),opening_balance=int(f["target"].get()),
+            allow_update=selected_product_key is not None)
+        return "Produto cadastrado com saldo inicial." if created else "Cadastro atualizado. O saldo não foi alterado."
 
-    product_actions = ttk.Frame(stock_tab)
-    product_actions.pack(fill="x", pady=6)
-    ttk.Button(product_actions, text="Novo produto", command=clear_product).pack(side="left", padx=4)
-    ttk.Button(product_actions, text="Cadastrar / salvar produto", command=lambda:run(save_product)).pack(side="left", padx=4)
-    ttk.Button(product_actions, text="Ajustar saldo", command=lambda:run(adjust_stock)).pack(side="left", padx=4)
-    ttk.Label(stock_tab, text="Últimas movimentações").pack(anchor="w")
-    movement_tree = table(stock_tab, [("at", "Data", 155), ("store", "Loja", 80), ("sku", "SKU", 120), ("kind", "Motivo", 120), ("delta", "Variação", 80), ("ref", "Referência", 260)], 5)
+    actions = ttk.Frame(stock_tab)
+    actions.pack(fill="x",pady=5)
+    ttk.Button(actions,text="Novo produto",command=clear_product).pack(side="left",padx=4)
+    ttk.Button(actions,text="Cadastrar / salvar",command=lambda:run(save_product)).pack(side="left",padx=4)
 
+    movement_form = ttk.LabelFrame(stock_tab,text="Movimentação manual do produto informado acima")
+    movement_form.pack(fill="x",pady=4)
+    ttk.Label(movement_form,text="Operação").grid(row=0,column=0,sticky="w",padx=5)
+    movement_kind = ttk.Combobox(movement_form,state="readonly",values=("Entrada","Saída","Reservar","Liberar reserva","Conferência"),width=20)
+    movement_kind.grid(row=1,column=0,sticky="ew",padx=5,pady=5)
+    movement_kind.set("Entrada")
+    movement_quantity = field(movement_form,"Quantidade (na conferência: saldo contado)",0,1,"1")
+    movement_reason = field(movement_form,"Motivo obrigatório",0,2,width=32)
+    movement_form.columnconfigure(2,weight=2)
+
+    def register_movement():
+        store,sku = product_fields["store"].get().strip(),product_fields["sku"].get().strip()
+        quantity = int(movement_quantity.get())
+        reason = movement_reason.get().strip()
+        if movement_kind.get() == "Conferência":
+            inventory.adjust(store,sku,quantity,reason)
+        else:
+            inventory.manual(store,sku,movement_kind.get(),quantity,reason)
+        return "Movimentação registrada. O saldo e o histórico foram atualizados."
+
+    ttk.Button(movement_form,text="Registrar movimentação",command=lambda:run(register_movement)).grid(row=1,column=3,padx=5,pady=5)
+    ttk.Label(stock_tab,text="Últimas movimentações").pack(anchor="w")
+    movement_tree = table(stock_tab,[("at","Data",145),("store","Loja",70),("sku","SKU",100),
+        ("kind","Tipo",100),("delta","Físico +/-",80),("reserved","Reserva +/-",85),
+        ("reason","Motivo",220),("ref","Referência",200)],4)
     # Vendas e previsão
-    ttk.Label(sales_tab, text="A venda confirmada baixa o saldo. A previsão inicial usa a média diária dos últimos 30 dias.").pack(anchor="w")
-    sale_form = ttk.LabelFrame(sales_tab, text="Registrar venda")
-    sale_form.pack(fill="x", pady=8)
-    ttk.Label(sale_form, text="Produto").grid(row=0,column=0,sticky="w",padx=5)
-    sale_product = ttk.Combobox(sale_form, state="readonly", width=45)
+    ttk.Label(sales_tab,text="A venda baixa o disponível. Cancelamentos e devoluções devolvem unidades ao estoque e corrigem a previsão.").pack(anchor="w")
+    sale_form = ttk.LabelFrame(sales_tab,text="Registrar venda")
+    sale_form.pack(fill="x",pady=8)
+    ttk.Label(sale_form,text="Produto").grid(row=0,column=0,sticky="w",padx=5)
+    sale_product = ttk.Combobox(sale_form,state="readonly",width=42)
     sale_product.grid(row=1,column=0,sticky="ew",padx=5,pady=6)
-    sale_quantity = field(sale_form, "Quantidade vendida", 0, 1, "1")
+    sale_quantity = field(sale_form,"Quantidade vendida",0,1,"1")
+    sale_price = field(sale_form,"Preço por unidade (R$)",0,2,"0,00")
+    sale_date = field(sale_form,"Data AAAA-MM-DD",0,3,date.today().isoformat())
     sale_form.columnconfigure(0,weight=3)
     forecast_text = tk.StringVar(value="Cadastre um produto para começar.")
 
@@ -153,27 +189,67 @@ def iniciar() -> None:
             raise ValueError("Escolha um produto.")
         return value.split(" | ",2)[:2]
 
+    def fill_sale_price(_event=None):
+        store,sku = selected_sale_product()
+        price = catalog.product(store,sku)["sale_cents"]/100
+        sale_price.delete(0,"end")
+        sale_price.insert(0,f"{price:.2f}")
+
+    sale_product.bind("<<ComboboxSelected>>",fill_sale_price)
+
     def save_sale():
-        store, sku = selected_sale_product()
-        forecast.record_sale(store,sku,int(sale_quantity.get()))
-        return "Venda registrada e estoque baixado uma única vez."
+        store,sku = selected_sale_product()
+        sale_id = forecast.record_sale(store,sku,int(sale_quantity.get()),
+            sold_on=sale_date.get().strip(),unit_price=sale_price.get().strip())
+        return f"Venda {sale_id} registrada; estoque baixado."
 
     def show_prediction():
         store,sku = selected_sale_product()
         result = forecast.prediction(store,sku,7)
-        forecast_text.set(f"Média recente: {result['media_diaria']:.2f}/dia  •  Próximos 7 dias: cerca de {result['quantidade_prevista']} unidade(s). Estimativa simples; confira antes de comprar.")
+        forecast_text.set(f"Média líquida recente: {result['media_diaria']:.2f}/dia  •  Próximos 7 dias: cerca de {result['quantidade_prevista']} unidade(s). Estimativa simples; confira antes de comprar.")
 
     sale_actions = ttk.Frame(sales_tab)
-    sale_actions.pack(fill="x", pady=6)
+    sale_actions.pack(fill="x",pady=6)
     ttk.Button(sale_actions,text="Registrar venda",command=lambda:run(save_sale)).pack(side="left",padx=4)
     ttk.Button(sale_actions,text="Calcular previsão",command=lambda:run(show_prediction)).pack(side="left",padx=4)
     ttk.Label(sales_tab,textvariable=forecast_text,wraplength=1000).pack(anchor="w",pady=8)
-    ttk.Label(sales_tab,text="Vendas recentes").pack(anchor="w")
-    sales_tree = table(sales_tab, [("day","Data",120),("store","Loja",120),("sku","SKU",150),("qty","Quantidade",100),("id","Registro",170)], 14)
+    ttk.Label(sales_tab,text="Vendas recentes: selecione uma linha para cancelar ou devolver unidades").pack(anchor="w")
+    sales_tree = table(sales_tab,[("day","Data",100),("store","Loja",85),("sku","SKU",110),
+        ("qty","Vendidas",75),("returned","Devolvidas",85),("unit","Preço/un.",90),
+        ("net","Valor líquido",100),("status","Situação",90),("id","Registro",140)],12)
+
+    def selected_sale():
+        choice = sales_tree.selection()
+        if not choice:
+            raise ValueError("Selecione uma venda na lista.")
+        return choice[0]
+
+    def cancel_selected_sale():
+        identifier = selected_sale()
+        if not messagebox.askyesno("Cancelar venda",f"Cancelar a venda {identifier} e devolver todas as unidades ao estoque?",parent=root):
+            return ""
+        return "Venda cancelada e estoque corrigido." if forecast.cancel_sale(identifier) else "Venda já cancelada."
+
+    def return_selected_sale():
+        identifier = selected_sale()
+        quantity = int(return_quantity.get())
+        if not messagebox.askyesno("Registrar devolução",f"Devolver {quantity} unidade(s) da venda {identifier} ao estoque?",parent=root):
+            return ""
+        forecast.return_sale(identifier,quantity)
+        return "Devolução registrada e estoque corrigido."
+
+    return_actions = ttk.Frame(sales_tab)
+    return_actions.pack(fill="x")
+    ttk.Label(return_actions,text="Qtd. devolvida:").pack(side="left",padx=4)
+    return_quantity = ttk.Entry(return_actions,width=8)
+    return_quantity.insert(0,"1")
+    return_quantity.pack(side="left",padx=4)
+    ttk.Button(return_actions,text="Registrar devolução",command=lambda:run(return_selected_sale)).pack(side="left",padx=4)
+    ttk.Button(return_actions,text="Cancelar venda",command=lambda:run(cancel_selected_sale)).pack(side="left",padx=4)
 
     # Reposição
     ttk.Label(replen_tab,text="Uma sugestão por produto. Pedidos aprovados já contam como 'a receber', evitando sugerir outra compra igual.").pack(anchor="w")
-    suggestion_tree = table(replen_tab,[("store","Loja",100),("sku","SKU",140),("name","Produto",190),("stock","Saldo",75),("pending","A receber",90),("point","Ponto",75),("qty","Comprar",90),("supplier","Fornecedor",150)],14)
+    suggestion_tree = table(replen_tab,[("store","Loja",100),("sku","SKU",140),("name","Produto",190),("stock","Disponível",85),("reserved","Reservado",85),("pending","A receber",90),("point","Ponto",75),("qty","Comprar",90),("supplier","Fornecedor",150)],14)
     order_form = ttk.LabelFrame(replen_tab,text="Criar pedido a partir da sugestão selecionada")
     order_form.pack(fill="x")
     order_quantity = field(order_form,"Quantidade",0,0)
@@ -185,7 +261,7 @@ def iniciar() -> None:
         if choice:
             row = suggestion_tree.item(choice[0])["values"]
             order_quantity.delete(0,"end")
-            order_quantity.insert(0,str(row[6]))
+            order_quantity.insert(0,str(row[7]))
 
     suggestion_tree.bind("<<TreeviewSelect>>",select_suggestion)
 
@@ -252,25 +328,43 @@ def iniciar() -> None:
 
     def refresh():
         all_products = catalog.products()
+        term = product_search.get().strip().casefold()
         product_rows = []
         for p in all_products:
             store,sku = p["store_id"],p["sku"]
-            product_rows.append((store+"\x1f"+sku,(store,sku,p["name"],p["category"],p["supplier"],brl(p["sale_cents"]),inventory.balance(store,sku),f"{p['lead_days']} dias / {p['safety']} un.")))
+            if term and term not in (store+" "+sku+" "+p["name"]+" "+(p["barcode"] or "")).casefold():
+                continue
+            stock = inventory.state(store,sku)
+            product_rows.append((store+"\x1f"+sku,(store,sku,p["name"],p["category"],
+                p["barcode"] or "—",p["supplier"],brl(p["sale_cents"]),
+                stock["fisico"],stock["reservado"],stock["disponivel"],
+                f"{p['lead_days']} d / {p['safety']} un.")))
         replace(product_tree,product_rows)
         sale_product["values"] = [f"{p['store_id']} | {p['sku']} | {p['name']}" for p in all_products]
         if sale_product.get() not in sale_product["values"]:
             sale_product.set("")
-        replace(movement_tree,[(m["id"],(m["created_at"][:19].replace("T"," "),m["store_id"],m["sku"],m["kind"],f"{m['delta']:+}",m["reference"])) for m in inventory.movements()])
-        replace(sales_tree,[(s["id"],(s["sold_on"],s["store_id"],s["sku"],s["quantity"],s["id"])) for s in forecast.sales()])
+        replace(movement_tree,[(m["id"],(m["created_at"][:19].replace("T"," "),
+            m["store_id"],m["sku"],m["kind"],f"{m['delta']:+}",
+            f"{m['reserved_delta']:+}",m["reason"] or "—",m["reference"]))
+            for m in inventory.movements()])
+        replace(sales_tree,[(s["id"],(s["sold_on"],s["store_id"],s["sku"],
+            s["quantity"],s["returned_quantity"],brl(s["unit_cents"]),
+            brl(s["net_cents"]),s["status"],s["id"])) for s in forecast.sales()])
         suggestions = replenishment.suggestions()
-        replace(suggestion_tree,[(s["store_id"]+"\x1f"+s["sku"],(s["store_id"],s["sku"],s["name"],s["stock"],s["pending"],s["point"],s["quantity"],s["supplier"])) for s in suggestions])
+        replace(suggestion_tree,[(s["store_id"]+"\x1f"+s["sku"],
+            (s["store_id"],s["sku"],s["name"],s["stock"],s["reserved"],
+             s["pending"],s["point"],s["quantity"],s["supplier"])) for s in suggestions])
         all_orders = purchasing.orders()
-        replace(order_tree,[(o["id"],(o["id"],o["store_id"],o["sku"],o["product_name"],o["supplier"],o["quantity"],brl(o["total_cents"]),o["status"])) for o in all_orders])
+        replace(order_tree,[(o["id"],(o["id"],o["store_id"],o["sku"],o["product_name"],
+            o["supplier"],o["quantity"],brl(o["total_cents"]),o["status"])) for o in all_orders])
         all_accounts = finance.payables()
         today = date.today().isoformat()
-        replace(payable_tree,[(a["id"],(a["id"],a["purchase_id"],a["supplier"],brl(a["amount_cents"]),a["due_on"],"Paga" if a["paid_on"] else "Vencida" if a["due_on"]<today else "Em aberto")) for a in all_accounts])
+        replace(payable_tree,[(a["id"],(a["id"],a["purchase_id"],a["supplier"],
+            brl(a["amount_cents"]),a["due_on"],"Paga" if a["paid_on"] else
+            "Vencida" if a["due_on"]<today else "Em aberto")) for a in all_accounts])
         summary.set(f"{len(all_products)} produto(s)  •  {sum(1 for s in suggestions if s['quantity']>0)} sugestão(ões) de compra  •  {sum(1 for a in all_accounts if not a['paid_on'])} conta(s) em aberto")
 
     ttk.Label(root,text=f"Dados locais: {database_path()}  •  Faça cópia deste arquivo para guardar seus registros.",wraplength=1080).pack(anchor="w",padx=18,pady=(0,10))
+    product_search.trace_add("write",lambda *_:refresh())
     refresh()
     root.mainloop()

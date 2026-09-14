@@ -40,6 +40,7 @@ def initialize() -> None:
             store_id TEXT NOT NULL REFERENCES stores(id), sku TEXT NOT NULL,
             name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Geral',
             unit TEXT NOT NULL DEFAULT 'un', sale_cents INTEGER NOT NULL DEFAULT 0,
+            barcode TEXT,
             supplier TEXT NOT NULL,
             lead_days INTEGER NOT NULL CHECK(lead_days >= 0),
             review_days INTEGER NOT NULL CHECK(review_days >= 0),
@@ -50,15 +51,21 @@ def initialize() -> None:
         );
         CREATE TABLE IF NOT EXISTS movements (
             id TEXT PRIMARY KEY, store_id TEXT NOT NULL, sku TEXT NOT NULL,
-            kind TEXT NOT NULL, delta INTEGER NOT NULL, reference TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL,
+            kind TEXT NOT NULL, delta INTEGER NOT NULL,
+            reserved_delta INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '',
+            reference TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
             FOREIGN KEY(store_id, sku) REFERENCES products(store_id, sku)
         );
         CREATE TABLE IF NOT EXISTS sales (
             id TEXT PRIMARY KEY, store_id TEXT NOT NULL, sku TEXT NOT NULL,
             quantity INTEGER NOT NULL CHECK(quantity > 0), sold_on TEXT NOT NULL,
+            unit_cents INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'Ativa',
             created_at TEXT NOT NULL,
             FOREIGN KEY(store_id, sku) REFERENCES products(store_id, sku)
+        );
+        CREATE TABLE IF NOT EXISTS sale_returns (
+            id TEXT PRIMARY KEY, sale_id TEXT NOT NULL REFERENCES sales(id),
+            quantity INTEGER NOT NULL CHECK(quantity > 0), created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS purchases (
             id TEXT PRIMARY KEY, store_id TEXT NOT NULL, sku TEXT NOT NULL,
@@ -79,6 +86,19 @@ def initialize() -> None:
             ("category", "TEXT NOT NULL DEFAULT 'Geral'"),
             ("unit", "TEXT NOT NULL DEFAULT 'un'"),
             ("sale_cents", "INTEGER NOT NULL DEFAULT 0"),
+            ("barcode", "TEXT"),
         ):
             if name not in columns:
                 db.execute(f"ALTER TABLE products ADD COLUMN {name} {declaration}")
+
+        for table, fields in (
+            ("movements", (("reserved_delta", "INTEGER NOT NULL DEFAULT 0"),
+                           ("reason", "TEXT NOT NULL DEFAULT ''"))),
+            ("sales", (("unit_cents", "INTEGER NOT NULL DEFAULT 0"),
+                       ("status", "TEXT NOT NULL DEFAULT 'Ativa'"))),
+        ):
+            existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+            for name, declaration in fields:
+                if name not in existing:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_products_barcode ON products(store_id,barcode) WHERE barcode IS NOT NULL")
