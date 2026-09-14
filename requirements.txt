@@ -1,0 +1,2 @@
+# Uso do aplicativo: Python 3.10+; somente biblioteca padrão.
+# Para gerar o executável: pip install pyinstaller
